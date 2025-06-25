@@ -1,0 +1,33 @@
+function fit = fitness_vmd_sr(params, signal_noisy, signal_clean)
+% 适应度: VMD+SR全参数优化, IMF用(排列熵/峭度)联合筛选, 互相关为优化目标
+K = round(params(1));% VMD模态数（取整）
+alpha = params(2);% VMD惩罚参数
+tau = params(3);% VMD噪声容忍度
+u = params(4);% 四稳势函数参数u
+v = params(5);% 四稳势函数参数v
+w = params(6);% 四稳势函数参数w
+k = params(7);% 四稳势函数参数k
+D = params(8);% SR噪声强度
+
+try
+    [u_modes, ~, ~] = VMD(signal_noisy, alpha, tau, K);%
+
+    % 用(排列熵/峭度)联合筛选最佳IMF
+    PEs = zeros(K,1); Kurts = zeros(K,1);
+    for i=1:K
+        PEs(i) = permutation_entropy(u_modes(i,:),3,1);
+        Kurts(i) = abs(kurtosis(u_modes(i,:)));
+    end
+    complex_score = PEs./(Kurts+eps);
+    [~, best_imf_idx] = min(complex_score);
+    imf = u_modes(best_imf_idx,:);
+    % SR增强
+    sr_params = [u,v,w,k,D];
+    enhanced = stochastic_resonance(imf, sr_params);
+
+    % 适应度 = 增强后与理想信号最大互相关
+    fit = max(xcorr(enhanced, x_clean, 'coeff'));
+catch
+    fit = -1e3; % 异常惩罚
+end
+end
